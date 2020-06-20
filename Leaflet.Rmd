@@ -1,0 +1,8 @@
+# June 20, 2020
+
+
+```{r map, echo = FALSE}
+library(leaflet); library(magrittr)
+blm <- leaflet() %>% addTiles() %>% addMarkers(lat = 38.8977, lng = -77.03656, popup = "Black lives matter. All lives matter.")
+blm
+```
