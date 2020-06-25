@@ -192,234 +192,73 @@ summary {
 </div>
 <div id="fetching-data-and-pre-treatment" class="section level2">
 <h2>Fetching data and pre-treatment</h2>
-<p>Download training data set from the given website, remove NA values, and separate it into training and validation sets.</p>
+<p>The data set is downloaded from the given website. NA values are removed, and the first 6 columns are removed as well since they do not provide information to distinguish between exercise manners.</p>
 <pre class="r"><code>library(magrittr)
 library(caret)</code></pre>
 <pre><code>## Loading required package: lattice</code></pre>
 <pre><code>## Loading required package: ggplot2</code></pre>
-<pre class="r"><code># Download training data set and read in the data.
+<pre class="r"><code># Download data set and read in the data.
 download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;, &quot;training.csv&quot;)
-temp &lt;- read.csv(&quot;training.csv&quot;, header = TRUE); temp &lt;- temp[,-1]
-# Remove NA values.
-screen &lt;- (sapply(temp, function(x) sum(is.na(x))) == 0) &amp; (sapply(temp, function(x) sum(x == &quot;&quot;)) == 0)
-temp &lt;- temp[,screen]; temp &lt;- temp[,-(1:6)]; temp$classe &lt;- as.factor(temp$classe)
-# Randomly split the data set into trainig and validation sets.
-set.seed(233); DP &lt;- createDataPartition(temp$classe, p = 0.7)[[1]]
-train &lt;- temp[DP,]; vali &lt;- temp[-DP,]</code></pre>
+training &lt;- read.csv(&quot;training.csv&quot;, header = TRUE); training &lt;- training[,-1]
+# Remove NA values and the first 6 columns.
+screen &lt;- (sapply(training, function(x) sum(is.na(x))) == 0) &amp; (sapply(training, function(x) sum(x == &quot;&quot;)) == 0)
+training &lt;- training[,screen]; training &lt;- training[,-(1:6)]; training$classe &lt;- as.factor(training$classe)</code></pre>
 </div>
-<div id="simple-decision-tree" class="section level2">
-<h2>Simple decision tree</h2>
-<pre class="r"><code>set.seed(233)
-tree &lt;- train(classe ~ ., method = &quot;rpart&quot;, data = train)
-predict(tree, train) %&gt;% confusionMatrix(train$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 3558 1108 1100 1019  366
-##          B   55  649   39  375  147
-##          C  284  901 1257  858  879
-##          D    0    0    0    0    0
-##          E    9    0    0    0 1133
-## 
-## Overall Statistics
-##                                           
-##                Accuracy : 0.4802          
-##                  95% CI : (0.4718, 0.4886)
-##     No Information Rate : 0.2843          
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
-##                                           
-##                   Kappa : 0.3213          
-##                                           
-##  Mcnemar's Test P-Value : NA              
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            0.9109  0.24417   0.5246   0.0000  0.44871
-## Specificity            0.6345  0.94440   0.7424   1.0000  0.99920
-## Pos Pred Value         0.4976  0.51304   0.3008      NaN  0.99212
-## Neg Pred Value         0.9472  0.83892   0.8808   0.8361  0.88948
-## Prevalence             0.2843  0.19349   0.1744   0.1639  0.18381
-## Detection Rate         0.2590  0.04724   0.0915   0.0000  0.08248
-## Detection Prevalence   0.5206  0.09209   0.3042   0.0000  0.08313
-## Balanced Accuracy      0.7727  0.59428   0.6335   0.5000  0.72396</code></pre>
-<pre class="r"><code>predict(tree, vali) %&gt;% confusionMatrix(vali$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 1522  473  487  430  158
-##          B   25  302   14  167   62
-##          C  122  364  525  367  364
-##          D    0    0    0    0    0
-##          E    5    0    0    0  498
-## 
-## Overall Statistics
-##                                           
-##                Accuracy : 0.4838          
-##                  95% CI : (0.4709, 0.4966)
-##     No Information Rate : 0.2845          
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
-##                                           
-##                   Kappa : 0.3257          
-##                                           
-##  Mcnemar's Test P-Value : NA              
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            0.9092  0.26514  0.51170   0.0000  0.46026
-## Specificity            0.6324  0.94353  0.74954   1.0000  0.99896
-## Pos Pred Value         0.4958  0.52982  0.30138      NaN  0.99006
-## Neg Pred Value         0.9460  0.84252  0.87907   0.8362  0.89149
-## Prevalence             0.2845  0.19354  0.17434   0.1638  0.18386
-## Detection Rate         0.2586  0.05132  0.08921   0.0000  0.08462
-## Detection Prevalence   0.5217  0.09686  0.29601   0.0000  0.08547
-## Balanced Accuracy      0.7708  0.60434  0.63062   0.5000  0.72961</code></pre>
+<div id="prepare-for-k-fold-cross-validation" class="section level2">
+<h2>Prepare for K-fold cross validation</h2>
+<p>The data set is then separated into 10 folds for later cross validation. A function is defined to produce the mean out of sample error of adopted models in the 10-fold cross validation.</p>
+<pre class="r"><code># Randomly split the data set into trainig and validation sets.
+set.seed(233); folds &lt;- createFolds(y = training$classe, k = 10)
+# Define function for K-fold cross validation. The output is the mean out of sample error. 
+kfcv &lt;- function(M) {
+  set.seed(233)
+  accuracy &lt;- {}; save(accuracy, file = &quot;accuracy.Rdata&quot;); save(M, file = &quot;M.Rdata&quot;)
+  for (i in 1:10) {
+    # Split the data into training and validation sets.load(&quot;training.Rdata&quot;); load(&quot;folds.Rdata&quot;); 
+    load(&quot;accuracy.Rdata&quot;); load(&quot;M.Rdata&quot;)
+    traindata &lt;- training[-folds[[i]],]; testdata &lt;- training[folds[[i]],]
+    # Train the requested model.
+    model &lt;- train(classe ~ ., method = M, data = traindata)
+    # Calculate the out of sample accuracy.
+    confMat &lt;- predict(model, testdata) %&gt;% confusionMatrix(testdata$classe)
+    accuracy &lt;- c(accuracy, confMat[[3]][[1]]); save(accuracy, file = &quot;accuracy.Rdata&quot;)
+    # Free the internal memory.
+    rm(list = ls())
+  }
+  # Calculate mean out of sample error.
+  load(&quot;accuracy.Rdata&quot;)
+  1 - mean(accuracy)
+}</code></pre>
 </div>
-<div id="random-forest" class="section level2">
-<h2>Random forest</h2>
-<pre class="r"><code>set.seed(233)
-rfm &lt;- train(classe ~ ., method = &quot;rf&quot;, data = train)
-predict(rfm, train) %&gt;% confusionMatrix(train$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 3906    0    0    0    0
-##          B    0 2658    0    0    0
-##          C    0    0 2396    0    0
-##          D    0    0    0 2252    0
-##          E    0    0    0    0 2525
-## 
-## Overall Statistics
-##                                      
-##                Accuracy : 1          
-##                  95% CI : (0.9997, 1)
-##     No Information Rate : 0.2843     
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16  
-##                                      
-##                   Kappa : 1          
-##                                      
-##  Mcnemar's Test P-Value : NA         
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Specificity            1.0000   1.0000   1.0000   1.0000   1.0000
-## Pos Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
-## Neg Pred Value         1.0000   1.0000   1.0000   1.0000   1.0000
-## Prevalence             0.2843   0.1935   0.1744   0.1639   0.1838
-## Detection Rate         0.2843   0.1935   0.1744   0.1639   0.1838
-## Detection Prevalence   0.2843   0.1935   0.1744   0.1639   0.1838
-## Balanced Accuracy      1.0000   1.0000   1.0000   1.0000   1.0000</code></pre>
-<pre class="r"><code>predict(rfm, vali) %&gt;% confusionMatrix(vali$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 1674   12    0    0    0
-##          B    0 1122    9    0    0
-##          C    0    5 1016   12    0
-##          D    0    0    1  952    2
-##          E    0    0    0    0 1080
-## 
-## Overall Statistics
-##                                          
-##                Accuracy : 0.993          
-##                  95% CI : (0.9906, 0.995)
-##     No Information Rate : 0.2845         
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16      
-##                                          
-##                   Kappa : 0.9912         
-##                                          
-##  Mcnemar's Test P-Value : NA             
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            1.0000   0.9851   0.9903   0.9876   0.9982
-## Specificity            0.9972   0.9981   0.9965   0.9994   1.0000
-## Pos Pred Value         0.9929   0.9920   0.9835   0.9969   1.0000
-## Neg Pred Value         1.0000   0.9964   0.9979   0.9976   0.9996
-## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
-## Detection Rate         0.2845   0.1907   0.1726   0.1618   0.1835
-## Detection Prevalence   0.2865   0.1922   0.1755   0.1623   0.1835
-## Balanced Accuracy      0.9986   0.9916   0.9934   0.9935   0.9991</code></pre>
+<div id="k-fold-cross-validation-for-simple-decision-tree-random-forest-and-gradient-boosting-machine." class="section level2">
+<h2>K-fold cross validation for simple decision tree, random forest, and gradient boosting machine.</h2>
+<p>The process is accomplished with the function <code>kfcv</code> above. Models are built up with <code>caret</code> package respectively.</p>
+<pre class="r"><code>merr &lt;- vector(mode = &quot;numeric&quot;, length = 3); names(merr) &lt;- c(&quot;simple decision tree&quot;, &quot;random forest&quot;, &quot;gradient boosting machine&quot;)
+# Mean out of sample error for simple decision tree.
+merr[1] &lt;- kfcv(&quot;rpart&quot;)
+# Mean out of sample error for random forest.
+merr[2] &lt;- kfcv(&quot;rf&quot;)
+# Mean out of sample error for gradient boosting machine.
+merr[3] &lt;- kfcv(&quot;gbm&quot;)</code></pre>
+<pre class="r"><code>merr</code></pre>
+<pre><code>##      simple decision tree             random forest gradient boosting machine 
+##               0.500611205               0.004841583               0.036133170</code></pre>
+<pre class="r"><code>paste(&quot;The method with the lowest mean out of sample error is&quot;, names(merr)[merr==min(merr)]) %&gt;% print()</code></pre>
+<pre><code>## [1] &quot;The method with the lowest mean out of sample error is random forest&quot;</code></pre>
+<p>As presented above, random forest method has the lowest mean out of sample error in 10-fold cross validation, and is selected for the final testing.</p>
 </div>
-<div id="boosted-decision-tree" class="section level2">
-<h2>Boosted decision tree</h2>
-<pre class="r"><code>set.seed(233)
-gbm &lt;- train(classe ~ ., method = &quot;gbm&quot;, data = train, verbose = FALSE)
-predict(gbm, train) %&gt;% confusionMatrix(train$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 3865   59    0    0    2
-##          B   32 2561   48    4   14
-##          C    7   38 2320   60   16
-##          D    2    0   23 2185   30
-##          E    0    0    5    3 2463
-## 
-## Overall Statistics
-##                                           
-##                Accuracy : 0.975           
-##                  95% CI : (0.9723, 0.9776)
-##     No Information Rate : 0.2843          
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
-##                                           
-##                   Kappa : 0.9684          
-##                                           
-##  Mcnemar's Test P-Value : 1.607e-13       
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            0.9895   0.9635   0.9683   0.9702   0.9754
-## Specificity            0.9938   0.9912   0.9893   0.9952   0.9993
-## Pos Pred Value         0.9845   0.9631   0.9504   0.9754   0.9968
-## Neg Pred Value         0.9958   0.9912   0.9933   0.9942   0.9945
-## Prevalence             0.2843   0.1935   0.1744   0.1639   0.1838
-## Detection Rate         0.2814   0.1864   0.1689   0.1591   0.1793
-## Detection Prevalence   0.2858   0.1936   0.1777   0.1631   0.1799
-## Balanced Accuracy      0.9916   0.9773   0.9788   0.9827   0.9874</code></pre>
-<pre class="r"><code>predict(gbm, vali) %&gt;% confusionMatrix(vali$classe)</code></pre>
-<pre><code>## Confusion Matrix and Statistics
-## 
-##           Reference
-## Prediction    A    B    C    D    E
-##          A 1644   35    0    1    2
-##          B   18 1063   34    4    8
-##          C    6   38  982   29   11
-##          D    6    1   10  927   13
-##          E    0    2    0    3 1048
-## 
-## Overall Statistics
-##                                           
-##                Accuracy : 0.9624          
-##                  95% CI : (0.9573, 0.9672)
-##     No Information Rate : 0.2845          
-##     P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
-##                                           
-##                   Kappa : 0.9525          
-##                                           
-##  Mcnemar's Test P-Value : 3.819e-07       
-## 
-## Statistics by Class:
-## 
-##                      Class: A Class: B Class: C Class: D Class: E
-## Sensitivity            0.9821   0.9333   0.9571   0.9616   0.9686
-## Specificity            0.9910   0.9865   0.9827   0.9939   0.9990
-## Pos Pred Value         0.9774   0.9432   0.9212   0.9687   0.9953
-## Neg Pred Value         0.9929   0.9840   0.9909   0.9925   0.9930
-## Prevalence             0.2845   0.1935   0.1743   0.1638   0.1839
-## Detection Rate         0.2794   0.1806   0.1669   0.1575   0.1781
-## Detection Prevalence   0.2858   0.1915   0.1811   0.1626   0.1789
-## Balanced Accuracy      0.9865   0.9599   0.9699   0.9778   0.9838</code></pre>
-<p>Based on the confusion matrices, the random forest performs best among the three methods.</p>
+<div id="final-testing" class="section level2">
+<h2>Final testing</h2>
+<p>Use random forest model to predict exercise manner of the 20 test samples.</p>
+<pre class="r"><code># Download and load test data set.
+download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, &quot;testing.csv&quot;)
+test &lt;- read.csv(&quot;testing.csv&quot;, header = TRUE); test &lt;- test[,-1]
+# Train random forest model with the whole training data set.
+rfm &lt;- train(classe ~ ., method = &quot;rf&quot;, data = training)
+# Predict it!
+predict(rfm, test)</code></pre>
+<pre><code>##  [1] B A B A A E D B A A B C B A E E A B B B
+## Levels: A B C D E</code></pre>
 </div>
 </div>
 

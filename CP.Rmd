@@ -17,48 +17,76 @@ Since `classe` variable is multinomial, tree methods are selected to predict exe
 
 ## Fetching data and pre-treatment
 
-Download training data set from the given website, remove NA values, and separate it into training and validation sets.
+The data set is downloaded from the given website. NA values are removed, and the first 6 columns are removed as well since they do not provide information to distinguish between exercise manners.
 
-```{r <preparation>}
+```{r <preparation 1>}
 library(magrittr)
 library(caret)
-# Download training data set and read in the data.
+# Download data set and read in the data.
 download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", "training.csv")
-temp <- read.csv("training.csv", header = TRUE); temp <- temp[,-1]
-# Remove NA values.
-screen <- (sapply(temp, function(x) sum(is.na(x))) == 0) & (sapply(temp, function(x) sum(x == "")) == 0)
-temp <- temp[,screen]; temp <- temp[,-(1:6)]; temp$classe <- as.factor(temp$classe)
+training <- read.csv("training.csv", header = TRUE); training <- training[,-1]
+# Remove NA values and the first 6 columns.
+screen <- (sapply(training, function(x) sum(is.na(x))) == 0) & (sapply(training, function(x) sum(x == "")) == 0)
+training <- training[,screen]; training <- training[,-(1:6)]; training$classe <- as.factor(training$classe)
+```
+
+## Prepare for K-fold cross validation
+
+The data set is then separated into 10 folds for later cross validation. A function is defined to produce the mean out of sample error of adopted models in the 10-fold cross validation.
+
+```{r <preparation 2>}
 # Randomly split the data set into trainig and validation sets.
-set.seed(233); DP <- createDataPartition(temp$classe, p = 0.7)[[1]]
-train <- temp[DP,]; vali <- temp[-DP,]
+set.seed(233); folds <- createFolds(y = training$classe, k = 10)
+# Define function for K-fold cross validation. The output is the mean out of sample error. 
+kfcv <- function(M) {
+  set.seed(233)
+  accuracy <- {}; save(accuracy, file = "accuracy.Rdata"); save(M, file = "M.Rdata")
+  for (i in 1:10) {
+    # Split the data into training and validation sets.load("training.Rdata"); load("folds.Rdata"); 
+    load("accuracy.Rdata"); load("M.Rdata")
+    traindata <- training[-folds[[i]],]; testdata <- training[folds[[i]],]
+    # Train the requested model.
+    model <- train(classe ~ ., method = M, data = traindata)
+    # Calculate the out of sample accuracy.
+    confMat <- predict(model, testdata) %>% confusionMatrix(testdata$classe)
+    accuracy <- c(accuracy, confMat[[3]][[1]]); save(accuracy, file = "accuracy.Rdata")
+    # Free the internal memory.
+    rm(list = ls())
+  }
+  # Calculate mean out of sample error.
+  load("accuracy.Rdata")
+  1 - mean(accuracy)
+}
 ```
 
-## Simple decision tree
+## K-fold cross validation for simple decision tree, random forest, and gradient boosting machine.
 
+The process is accomplished with the function `kfcv` above. Models are built up with `caret` package respectively.
 
-```{r <simple decision tree>}
-set.seed(233)
-tree <- train(classe ~ ., method = "rpart", data = train)
-predict(tree, train) %>% confusionMatrix(train$classe)
-predict(tree, vali) %>% confusionMatrix(vali$classe)
+```{r <kfcv for rpart, rf, gbm>}
+merr <- vector(mode = "numeric", length = 3); names(merr) <- c("simple decision tree", "random forest", "gradient boosting machine")
+# Mean out of sample error for simple decision tree.
+merr[1] <- kfcv("rpart")
+# Mean out of sample error for random forest.
+merr[2] <- kfcv("rf")
+# Mean out of sample error for gradient boosting machine.
+merr[3] <- kfcv("gbm")
+merr
+paste("The method with the lowest mean out of sample error is", names(merr)[merr==min(merr)]) %>% print()
 ```
 
-## Random forest
+As presented above, random forest method has the lowest mean out of sample error in 10-fold cross validation, and is selected for the final testing.
 
-```{r <random forest>}
-set.seed(233)
-rfm <- train(classe ~ ., method = "rf", data = train)
-predict(rfm, train) %>% confusionMatrix(train$classe)
-predict(rfm, vali) %>% confusionMatrix(vali$classe)
+## Final testing
+
+Use random forest model to predict exercise manner of the 20 test samples.
+
+```{r <testing>}
+# Download and load test data set.
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", "testing.csv")
+test <- read.csv("testing.csv", header = TRUE); test <- test[,-1]
+# Train random forest model with the whole training data set.
+rfm <- train(classe ~ ., method = "rf", data = training)
+# Predict it!
+predict(rfm, test)
 ```
-
-## Boosted decision tree
-
-```{r <boosted decision tree>}
-set.seed(233)
-gbm <- train(classe ~ ., method = "gbm", data = train, verbose = FALSE)
-predict(gbm, train) %>% confusionMatrix(train$classe)
-predict(gbm, vali) %>% confusionMatrix(vali$classe)
-```
-
-Based on the confusion matrices, the random forest performs best among the three methods.
